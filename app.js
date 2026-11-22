@@ -739,8 +739,16 @@ const costPer = (spend, n) => (spend && n ? brl(spend / n) : '—');
 
 async function viewResults(view) {
   const clients = await api('GET', '/api/clients');
-  const st = view._rs || (view._rs = { preset: 30, client: '', from: addDays(todayStr(), -29), to: todayStr() });
-  if (st.preset) { st.to = todayStr(); st.from = addDays(st.to, -(st.preset - 1)); }
+  if (!view._rs) {
+    // abre no mês mais recente que tem resultados lançados (ou no mês atual)
+    const all = await api('GET', `/api/results?from=2000-01-01&to=${todayStr()}`).catch(() => ({ rows: [] }));
+    const last = all.rows.map(x => x.month).sort().pop();
+    view._rs = { preset: 'mes', month: last || thisMonth(), client: '', from: '', to: '' };
+  }
+  const st = view._rs;
+  if (st.preset === 'mes') [st.from, st.to] = monthBounds(st.month);
+  else if (st.preset === 'tudo') { st.from = '2000-01-01'; st.to = todayStr(); }
+  else if (st.preset) { st.to = todayStr(); st.from = addDays(st.to, -(st.preset - 1)); }
   const q = new URLSearchParams({ from: st.from, to: st.to, ...(st.client ? { client: st.client } : {}) });
   const r = await api('GET', `/api/results?${q}`);
   const t = r.totals;
@@ -751,10 +759,15 @@ async function viewResults(view) {
     ${can('metricas', 'edit') ? '<button class="btn" id="r-add">+ Lançar resultados</button>' : ''}
     <button class="btn secondary" id="r-pdf">⇩ Gerar relatório PDF do mês</button></div></div>
     <div class="card"><h2>Período de análise</h2><div class="muted" style="margin-bottom:12px">Filtre os registros pela data ou mês informado.</div>
-      <div class="toolbar">${[30, 60, 90, 365].map(n => `<button class="btn ${st.preset === n ? '' : 'secondary'}" data-preset="${n}">${n === 365 ? '12 meses' : n + ' dias'}</button>`).join('')}
-        <button class="btn ${st.preset ? 'secondary' : ''}" data-preset="0">Personalizado</button>
-        ${!st.preset ? `<input type="date" id="r-from" value="${st.from}"><span class="muted">até</span><input type="date" id="r-to" value="${st.to}"><button class="btn sm" id="r-apply">Aplicar</button>` : ''}</div></div>
-    <p class="muted small" style="margin:14px 0">Período: ${fmtDate(r.from)} a ${fmtDate(r.to)} · Os relatórios são registros por mês, então o filtro considera os meses que se sobrepõem ao intervalo (${monthLabel(r.months_range[0])}${r.months_range[0] !== r.months_range[1] ? ' a ' + monthLabel(r.months_range[1]) : ''}).</p>
+      <div class="toolbar">${[['mes', 'Por mês'], ['tudo', 'Tudo'], [30, '30 dias'], [60, '60 dias'], [90, '90 dias'], [365, '12 meses'], [0, 'Personalizado']]
+          .map(([k, l]) => `<button class="btn ${st.preset === k ? '' : 'secondary'}" data-preset="${k}">${l}</button>`).join('')}</div>
+      ${st.preset === 'mes' ? `<div class="toolbar" style="margin-top:12px"><button class="btn secondary sm" id="r-prev" aria-label="Mês anterior">‹</button>
+          <input type="month" id="r-month" value="${st.month}"><button class="btn secondary sm" id="r-next" aria-label="Próximo mês">›</button>
+          <span class="muted small">Mostra só os números deste mês, sem somar com outros.</span></div>` : ''}
+      ${st.preset === 0 ? `<div class="toolbar" style="margin-top:12px"><input type="date" id="r-from" value="${st.from}"><span class="muted">até</span><input type="date" id="r-to" value="${st.to}"><button class="btn sm" id="r-apply">Aplicar</button></div>` : ''}</div>
+    <p class="muted small" style="margin:14px 0">${st.preset === 'mes' ? `Mostrando somente <b>${monthLabel(st.month)}</b>.`
+      : st.preset === 'tudo' ? 'Mostrando a soma de <b>todos os meses</b> lançados.'
+      : `Período: ${fmtDate(r.from)} a ${fmtDate(r.to)} · soma dos meses ${monthLabel(r.months_range[0])}${r.months_range[0] !== r.months_range[1] ? ' a ' + monthLabel(r.months_range[1]) : ''}.`}</p>
     <div class="stats">
       <div class="stat"><div class="stat-ico">◉</div><div class="k">Visualizações</div><div class="v">${n0(t.views)}</div><div class="d muted">Dados lançados manualmente</div></div>
       <div class="stat"><div class="stat-ico">↗</div><div class="k">Novos seguidores</div><div class="v ${t.new_followers < 0 ? 'down' : ''}">${t.new_followers > 0 ? '+' : ''}${n0(t.new_followers)}</div><div class="d muted">Variação dos relatórios</div></div>
@@ -782,10 +795,17 @@ async function viewResults(view) {
   const reload = () => viewResults(view);
   ['#r-add', '#r-add2'].forEach(id => $(id)?.addEventListener('click', () => launchResults(clients, st.client, null, reload)));
   $$('[data-redit]', view).forEach(b => b.onclick = () => launchResults(clients, null, r.rows.find(m => m.id == b.dataset.redit), reload));
-  $$('[data-preset]', view).forEach(b => b.onclick = () => { st.preset = +b.dataset.preset; reload(); });
+  $$('[data-preset]', view).forEach(b => b.onclick = () => {
+    const k = b.dataset.preset; st.preset = isNaN(+k) ? k : +k;
+    if (st.preset === 0 && !st.from) { st.from = addDays(todayStr(), -29); st.to = todayStr(); }
+    reload();
+  });
+  $('#r-month')?.addEventListener('change', e => { if (e.target.value) { st.month = e.target.value; reload(); } });
+  $('#r-prev')?.addEventListener('click', () => { st.month = shiftMonth(st.month, -1); reload(); });
+  $('#r-next')?.addEventListener('click', () => { st.month = shiftMonth(st.month, 1); reload(); });
   $('#r-apply')?.addEventListener('click', () => { st.from = $('#r-from').value; st.to = $('#r-to').value; reload(); });
   $('#r-client').onchange = e => { st.client = e.target.value; reload(); };
-  $('#r-pdf').onclick = () => pickReport(clients, st.client);
+  $('#r-pdf').onclick = () => pickReport(clients, st.client, st.preset === 'mes' ? st.month : thisMonth());
   if (r.monthly.length) { const draw = () => { $('#r-chart').innerHTML = barChart(r.monthly, $('#r-k').value); }; $('#r-k').onchange = draw; draw(); }
 }
 // Lançar/editar os números de um cliente num mês, direto da página Resultados
@@ -836,9 +856,9 @@ function launchResults(clients, preClient, existing, reload) {
     close(); toast('Resultados salvos!'); reload();
   });
 }
-function pickReport(clients, client) {
+function pickReport(clients, client, month = thisMonth()) {
   const { el, close } = modal('Relatório PDF do mês', `<form><div class="grid g2">
-    ${field('month', 'Mês do relatório', thisMonth(), 'month', 'required')}
+    ${field('month', 'Mês do relatório', month, 'month', 'required')}
     <div class="field"><label>Conta</label><select name="client"><option value="">Todas as contas</option>${clients.map(c => `<option value="${c.id}" ${client == c.id ? 'selected' : ''}>${h(c.name)}</option>`).join('')}</select></div></div>
     <p class="muted small">O relatório abre numa nova aba. Na janela de impressão, escolha <b>Salvar como PDF</b>.</p>
     <div class="modal-foot"><button type="button" class="btn secondary" data-close>Cancelar</button><button class="btn" type="submit">Gerar relatório</button></div></form>`);
