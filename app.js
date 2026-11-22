@@ -751,7 +751,7 @@ async function viewResults(view) {
     ${can('metricas', 'edit') ? '<button class="btn" id="r-add">+ Lançar resultados</button>' : ''}
     <button class="btn secondary" id="r-pdf">⇩ Gerar relatório PDF do mês</button></div></div>
     <div class="card"><h2>Período de análise</h2><div class="muted" style="margin-bottom:12px">Filtre os registros pela data ou mês informado.</div>
-      <div class="toolbar">${[30, 60, 90].map(n => `<button class="btn ${st.preset === n ? '' : 'secondary'}" data-preset="${n}">${n} dias</button>`).join('')}
+      <div class="toolbar">${[30, 60, 90, 365].map(n => `<button class="btn ${st.preset === n ? '' : 'secondary'}" data-preset="${n}">${n === 365 ? '12 meses' : n + ' dias'}</button>`).join('')}
         <button class="btn ${st.preset ? 'secondary' : ''}" data-preset="0">Personalizado</button>
         ${!st.preset ? `<input type="date" id="r-from" value="${st.from}"><span class="muted">até</span><input type="date" id="r-to" value="${st.to}"><button class="btn sm" id="r-apply">Aplicar</button>` : ''}</div></div>
     <p class="muted small" style="margin:14px 0">Período: ${fmtDate(r.from)} a ${fmtDate(r.to)} · Os relatórios são registros por mês, então o filtro considera os meses que se sobrepõem ao intervalo (${monthLabel(r.months_range[0])}${r.months_range[0] !== r.months_range[1] ? ' a ' + monthLabel(r.months_range[1]) : ''}).</p>
