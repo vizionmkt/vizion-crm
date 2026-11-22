@@ -522,7 +522,7 @@ function tabData(box, c) {
 }
 
 const METRIC_FIELDS = [
-  ['views', 'Visualizações'], ['followers', 'Seguidores'], ['profile_visits', 'Visitas ao perfil'],
+  ['views', 'Visualizações'], ['followers', 'Novos seguidores'], ['profile_visits', 'Visitas ao perfil'],
   ['link_clicks', 'Toques no link da bio'], ['interactions', 'Interações'], ['leads', 'Leads'],
   ['ad_results', 'Resultados de anúncios'], ['ad_spend', 'Investido em tráfego'],
 ];
@@ -581,7 +581,7 @@ function editMetrics(c, r, rows, reload) {
   const { el, close } = modal(r ? `Métricas de ${monthLabel(r.month)}` : 'Lançar métricas do mês', `<form>
     <div class="grid g2">
       ${field('month', 'Mês', month, 'month', `required ${r ? 'readonly' : ''}`)}<div></div>
-      ${METRIC_FIELDS.map(([k, l]) => field(k, k === 'ad_spend' ? 'Investido em impulsionamento/tráfego (R$)' : k === 'followers' ? 'Seguidores (total no fim do mês)' : k === 'leads' ? 'Leads que o cliente recebeu no mês' : l, r?.[k] ?? '', 'number', `min="0" step="${k === 'ad_spend' ? '0.01' : '1'}"`)).join('')}
+      ${METRIC_FIELDS.map(([k, l]) => field(k, k === 'ad_spend' ? 'Investido em impulsionamento/tráfego (R$)' : k === 'followers' ? 'Novos seguidores no mês' : k === 'leads' ? 'Leads que o cliente recebeu no mês' : l, r?.[k] ?? '', 'number', `min="0" step="${k === 'ad_spend' ? '0.01' : '1'}"`)).join('')}
       <div class="field"><label>Tipo de resultado dos anúncios</label><select name="result_type">${RESULT_TYPES.map(t => `<option ${(r?.result_type || 'Leads') === t ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
       ${field('notes', 'Observações do mês', r?.notes ?? '', 'textarea', 'span2')}
     </div>
@@ -770,7 +770,7 @@ async function viewResults(view) {
       : `Período: ${fmtDate(r.from)} a ${fmtDate(r.to)} · soma dos meses ${monthLabel(r.months_range[0])}${r.months_range[0] !== r.months_range[1] ? ' a ' + monthLabel(r.months_range[1]) : ''}.`}</p>
     <div class="stats">
       <div class="stat"><div class="stat-ico">◉</div><div class="k">Visualizações</div><div class="v">${n0(t.views)}</div><div class="d muted">Dados lançados manualmente</div></div>
-      <div class="stat"><div class="stat-ico">↗</div><div class="k">Novos seguidores</div><div class="v ${t.new_followers < 0 ? 'down' : ''}">${t.new_followers > 0 ? '+' : ''}${n0(t.new_followers)}</div><div class="d muted">Variação dos relatórios</div></div>
+      <div class="stat"><div class="stat-ico">↗</div><div class="k">Novos seguidores</div><div class="v ${t.new_followers < 0 ? 'down' : ''}">${t.new_followers > 0 ? '+' : ''}${n0(t.new_followers)}</div><div class="d muted">Ganhos no período</div></div>
       <div class="stat"><div class="stat-ico">♡</div><div class="k">Interações</div><div class="v">${n0(t.interactions)}</div><div class="d muted">Interações registradas</div></div>
       <div class="stat"><div class="stat-ico">✉</div><div class="k">Leads recebidos</div><div class="v">${n0(t.leads)}</div><div class="d muted">Custo por lead: ${costPer(t.ad_spend, t.leads)}</div></div>
       <div class="stat"><div class="stat-ico">R$</div><div class="k">Valor investido</div><div class="v">${brl(t.ad_spend)}</div><div class="d muted">Custo por resultado: ${costPer(t.ad_spend, t.ad_results)}</div></div>
@@ -781,7 +781,7 @@ async function viewResults(view) {
       <div class="alert-row"><div><b>Leads</b><div class="muted small">Leads que os clientes receberam no período · custo por lead ${costPer(t.ad_spend, t.leads)}</div></div><b class="num">${n0(t.leads)}</b></div>
       <div class="alert-row"><div><b>Visitas ao perfil · toques no link da bio</b></div><b class="num">${n0(t.profile_visits)} · ${n0(t.link_clicks)}</b></div></div>
     <div class="two-col" style="margin-top:18px">
-      <div class="card"><div class="card-head"><h2>Evolução mensal</h2><select id="r-k" style="width:auto">${[['views', 'Visualizações'], ['interactions', 'Interações'], ['ad_results', 'Resultados'], ['ad_spend', 'Investimento'], ['leads', 'Leads']].map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select></div>
+      <div class="card"><div class="card-head"><h2>Evolução mensal</h2><select id="r-k" style="width:auto">${[['views', 'Visualizações'], ['followers', 'Novos seguidores'], ['interactions', 'Interações'], ['ad_results', 'Resultados'], ['ad_spend', 'Investimento'], ['leads', 'Leads']].map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select></div>
         <div id="r-chart">${r.monthly.length ? '' : '<div class="empty">Nenhum relatório lançado nesse período.</div>'}</div></div>
       <div class="card"><h2 style="margin-bottom:10px">Por conta</h2>${r.clients.length ? `<div class="table-wrap"><table><thead><tr><th>Conta</th><th class="r">Visualiz.</th><th class="r">Seguidores</th><th class="r">Resultados</th><th class="r">Investido</th><th class="r">Custo/res.</th></tr></thead><tbody>
         ${r.clients.map(c => `<tr><td><a href="#/clientes/${c.client_id}/metricas">${h(c.client_name)}</a></td><td class="r num">${n0(c.views)}</td><td class="r num">${c.new_followers > 0 ? '+' : ''}${n0(c.new_followers)}</td><td class="r num">${n0(c.ad_results)}</td><td class="r num">${brl(c.ad_spend)}</td><td class="r num">${costPer(c.ad_spend, c.ad_results)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">Sem dados no período.</div>'}</div>
@@ -813,7 +813,7 @@ function launchResults(clients, preClient, existing, reload) {
   const active = clients.filter(c => c.active || c.id == existing?.client_id);
   if (!active.length) return toast('Cadastre um cliente primeiro.', true);
   const label = k => METRIC_FIELDS.find(f => f[0] === k)[1];
-  const numField = k => field(k, k === 'ad_spend' ? 'Valor investido em tráfego/impulsionamento (R$)' : k === 'followers' ? 'Seguidores (total no fim do mês)' : k === 'leads' ? 'Leads que o cliente recebeu no mês' : label(k), existing?.[k] ?? '', 'number', `min="0" step="${k === 'ad_spend' ? '0.01' : '1'}" placeholder="0"`);
+  const numField = k => field(k, k === 'ad_spend' ? 'Valor investido em tráfego/impulsionamento (R$)' : k === 'followers' ? 'Novos seguidores no mês' : k === 'leads' ? 'Leads que o cliente recebeu no mês' : label(k), existing?.[k] ?? '', 'number', `min="0" step="${k === 'ad_spend' ? '0.01' : '1'}" placeholder="0"`);
   const { el, close } = modal(existing ? `Resultados de ${existing.client_name} — ${monthLabel(existing.month)}` : 'Lançar resultados', `<form><div class="grid g2">
       <div class="field"><label>Conta *</label><select name="client_id" required ${existing ? 'disabled' : ''}>${active.map(c => `<option value="${c.id}" ${(existing?.client_id ?? preClient) == c.id ? 'selected' : ''}>${h(c.name)}</option>`).join('')}</select></div>
       ${field('month', 'Mês *', existing?.month || thisMonth(), 'month', `required ${existing ? 'readonly' : ''}`)}

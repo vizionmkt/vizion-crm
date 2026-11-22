@@ -280,22 +280,21 @@ const Backend = (() => {
     if (from > to) fail('A data inicial precisa ser antes da final.');
     const m1 = from.slice(0, 7), m2 = to.slice(0, 7);
     let qy = sb.from('metrics').select('*, clients(name)').gte('month', m1).lte('month', m2).order('month');
-    let qp = sb.from('metrics').select('client_id, followers').eq('month', prevMonth(m1));
-    if (query.client) { qy = qy.eq('client_id', Number(query.client)); qp = qp.eq('client_id', Number(query.client)); }
+    if (query.client) qy = qy.eq('client_id', Number(query.client));
     const rows = (await run(qy)).map(r => ({ ...r, client_name: r.clients?.name || '' }));
-    const prevBy = Object.fromEntries((await run(qp)).map(r => [r.client_id, r.followers]));
-    const K = ['views', 'interactions', 'ad_results', 'ad_spend', 'leads', 'profile_visits', 'link_clicks'];
+    // "followers" = novos seguidores ganhos no mês (é como a equipe lança), então soma como os outros
+    const K = ['views', 'followers', 'interactions', 'ad_results', 'ad_spend', 'leads', 'profile_visits', 'link_clicks'];
     const by = {};
     for (const r of rows) {
-      const c = by[r.client_id] ||= { client_id: r.client_id, client_name: r.client_name, first: null, last: null, types: new Set(), ...Object.fromEntries(K.map(k => [k, 0])) };
+      const c = by[r.client_id] ||= { client_id: r.client_id, client_name: r.client_name, types: new Set(), ...Object.fromEntries(K.map(k => [k, 0])) };
       for (const k of K) c[k] += Number(r[k]) || 0;
       if (r.ad_results) c.types.add(r.result_type || 'Leads');
-      c.first ??= r; c.last = r;
     }
-    const clients = Object.values(by).map(({ first, last, types, ...c }) => ({ ...c, followers: last.followers, new_followers: last.followers - (prevBy[c.client_id] ?? first.followers), result_types: [...types] }));
+    const clients = Object.values(by).map(({ types, ...c }) => ({ ...c, new_followers: c.followers, result_types: [...types] }));
     const sum = k => clients.reduce((s, c) => s + c[k], 0);
     const months = {};
-    for (const r of rows) { const m = months[r.month] ||= { month: r.month, views: 0, interactions: 0, ad_results: 0, ad_spend: 0, leads: 0 }; for (const k of ['views', 'interactions', 'ad_results', 'ad_spend', 'leads']) m[k] += Number(r[k]) || 0; }
+    const MK = ['views', 'followers', 'interactions', 'ad_results', 'ad_spend', 'leads'];
+    for (const r of rows) { const m = months[r.month] ||= { month: r.month, ...Object.fromEntries(MK.map(k => [k, 0])) }; for (const k of MK) m[k] += Number(r[k]) || 0; }
     return {
       from, to, months_range: [m1, m2], clients, monthly: Object.values(months), rows,
       totals: Object.fromEntries([...K, 'new_followers'].map(k => [k, sum(k)])),
