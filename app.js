@@ -347,7 +347,7 @@ async function viewDashboard(view) {
       ${d.metrics ? `<div class="stat"><div class="k">Leads dos clientes</div><div class="v">${n0(d.metrics.leads)}</div><div class="d muted">Tráfego: ${brl(d.metrics.ad_spend)}</div></div>` : ''}
     </div>
     ${d.nextMeetings?.length ? `<div class="card" style="margin-bottom:18px"><div class="card-head"><h2>Próximas reuniões</h2><a href="#/leads">Ver leads →</a></div>
-      ${d.nextMeetings.map(l => `<div class="alert-row"><span><b>${h(l.name)}</b> <span class="muted small">${h(l.company || '')}</span></span><span class="badge accent">${fmtDate(l.meeting_date)}</span></div>`).join('')}</div>` : ''}
+      ${d.nextMeetings.map(l => `<div class="alert-row"><span><b>${h(l.name)}</b> <span class="muted small">${h(l.company || '')}</span></span><span class="badge accent">${fmtDate(l.meeting_date)}${l.meeting_time ? ' · ' + h(l.meeting_time) : ''}</span></div>`).join('')}</div>` : ''}
     ${d.overdue ? `<div class="two-col">
       <div class="card"><div class="card-head"><h2>Pagamentos atrasados</h2><span class="badge bad">${d.overdue.length}</span></div><div id="ov"></div></div>
       <div class="card"><div class="card-head"><h2>Vencendo nos próximos dias</h2><span class="badge warn">${d.upcoming.length}</span></div><div id="up"></div></div>
@@ -983,7 +983,7 @@ async function viewLeads(view) {
       ${rows.map(l => `<tr class="click" data-id="${l.id}"><td><b>${h(l.name)}</b><div class="muted small">${h(l.company)}</div></td>
         <td>${h(l.segment)}</td><td>${h(l.network)}<div class="muted small">${h(l.handle)}</div></td>
         <td><span class="badge ${SOURCE_BADGE[l.source]}">${SOURCES[l.source] || ''}</span>${l.campaign ? `<div class="muted small">${h(l.campaign)}</div>` : ''}</td>
-        <td>${fmtDate(l.first_contact) || '—'}</td><td>${fmtDate(l.meeting_date) || '—'}</td><td>${fmtDate(l.closed_date) || '—'}${l.deal_value ? `<div class="muted small">${brl(l.deal_value)}</div>` : ''}</td>
+        <td>${fmtDate(l.first_contact) || '—'}</td><td>${fmtDate(l.meeting_date) || '—'}${l.meeting_time ? `<div class="muted small">às ${h(l.meeting_time)}</div>` : ''}</td><td>${fmtDate(l.closed_date) || '—'}${l.deal_value ? `<div class="muted small">${brl(l.deal_value)}</div>` : ''}</td>
         <td><span class="badge ${STATUS_BADGE[l.status]}">${STATUS[l.status]}</span>${l.status === 'perdido' && l.lost_reason ? `<div class="muted small">${h(l.lost_reason)}</div>` : ''}${l.converted_client_id ? '<div class="small"><a href="#/clientes/' + l.converted_client_id + '">ver cliente →</a></div>' : ''}</td></tr>`).join('')}</tbody></table></div>`
       : `<div class="empty">${leads.length ? 'Nenhum lead com esses filtros.' : 'Nenhum lead cadastrado ainda.'}</div>`;
     $$('#ltable tr[data-id]').forEach(tr => tr.onclick = e => { if (e.target.closest('a')) return; editLead(leads.find(l => l.id == tr.dataset.id), clients, reload); });
@@ -1029,6 +1029,7 @@ function leadCardHtml(l, { showStage = false } = {}) {
     <div class="lc-meta"><span title="Primeiro contato">📅 ${fmtDate(l.first_contact) || fmtDate((l.created_at || '').slice(0, 10)) || '—'}</span>
       <span class="badge ${SOURCE_BADGE[l.source]}">${SOURCES[l.source] || ''}</span></div>
     ${l.network ? `<div class="muted small">${h(l.network)}${l.handle ? ' · ' + h(l.handle) : ''}</div>` : ''}
+    ${l.meeting_date && ativo ? `<div class="lc-meet">🗓 Reunião ${fmtDate(l.meeting_date)}${l.meeting_time ? ' às ' + h(l.meeting_time) : ''}</div>` : ''}
     ${showStage ? `<div style="margin-top:6px"><span class="badge ${STATUS_BADGE[l.status]}">${STATUS[l.status]}</span>${l.status === 'perdido' && l.lost_reason ? ` <span class="muted small">${h(l.lost_reason)}</span>` : ''}</div>` : ''}
     <div class="lc-foot">${l.deal_value ? `<span class="muted small">${brl(l.deal_value)}</span>` : '<span></span>'}
       ${late ? `<span class="badge bad">⚠ ${days}d parado</span>` : ativo ? `<span class="muted small">${days === 0 ? 'hoje' : days + 'd na etapa'}</span>` : ''}</div>
@@ -1127,6 +1128,7 @@ function editLead(l, clients, reload) {
     <div class="grid g4">
       ${field('first_contact', 'Primeiro contato', l.first_contact, 'date')}
       ${field('meeting_date', 'Reunião agendada para', l.meeting_date, 'date')}
+      ${field('meeting_time', 'Horário da reunião', l.meeting_time || '', 'time')}
       ${field('closed_date', 'Contrato fechado em', l.closed_date, 'date')}
       ${field('deal_value', 'Valor do contrato (R$)', l.deal_value || '', 'number', 'step="0.01" min="0"')}
       <div class="field"><label>Status</label><select name="status">${Object.entries(STATUS).map(([k, v]) => `<option value="${k}" ${l.status === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>

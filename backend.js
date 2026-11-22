@@ -111,7 +111,8 @@ const Backend = (() => {
     else if (d('meeting_date') && ['novo', 'contato'].includes(status)) status = 'reuniao';
     let source = LEAD_SOURCES.includes(b.source) ? b.source : 'outro';
     if (v.campaign && !['trafego', 'impulsionamento'].includes(source)) source = 'trafego'; // campanha rodada = tráfego pago
-    return { ...v, source, status, first_contact: d('first_contact'), meeting_date: d('meeting_date'), closed_date: d('closed_date'), deal_value: num(b.deal_value) };
+    const mt = /^([01]\d|2[0-3]):[0-5]\d$/.test(b.meeting_time || '') && d('meeting_date') ? b.meeting_time : '';
+    return { ...v, source, status, first_contact: d('first_contact'), meeting_date: d('meeting_date'), meeting_time: mt, closed_date: d('closed_date'), deal_value: num(b.deal_value) };
   }
   function spendValues(b) {
     if (!isMonth(b.month)) fail('Informe o mês.');
@@ -418,13 +419,13 @@ const Backend = (() => {
     if (can('metricas')) tasks.push(run(sb.from('metrics').select('leads, ad_spend, views').eq('month', month)).then(r => {
       out.metrics = { leads: r.reduce((s, x) => s + x.leads, 0), ad_spend: r.reduce((s, x) => s + Number(x.ad_spend), 0), views: r.reduce((s, x) => s + x.views, 0) };
     }));
-    if (can('leads')) tasks.push(run(sb.from('leads').select('id, name, company, status, first_contact, meeting_date, closed_date, created_at')).then(r => {
+    if (can('leads')) tasks.push(run(sb.from('leads').select('id, name, company, status, first_contact, meeting_date, meeting_time, closed_date, created_at')).then(r => {
       const fm = l => (l.first_contact || l.created_at || '').slice(0, 7);
       out.leads = {
         novos: r.filter(l => fm(l) === month).length, reunioes: r.filter(l => (l.meeting_date || '').slice(0, 7) === month).length,
         fechados: r.filter(l => (l.closed_date || '').slice(0, 7) === month && l.status === 'fechado').length,
       };
-      out.nextMeetings = r.filter(l => l.meeting_date >= t && !['fechado', 'perdido'].includes(l.status)).sort((a, b) => a.meeting_date.localeCompare(b.meeting_date)).slice(0, 5);
+      out.nextMeetings = r.filter(l => l.meeting_date >= t && !['fechado', 'perdido'].includes(l.status)).sort((a, b) => (a.meeting_date + (a.meeting_time || '99')).localeCompare(b.meeting_date + (b.meeting_time || '99'))).slice(0, 5);
     }));
     await Promise.all(tasks);
     return out;
