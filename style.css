@@ -229,3 +229,5 @@ td .row-actions { display: flex; gap: 4px; justify-content: flex-end; flex-wrap:
   .board-col { scroll-snap-align: start; }
 }
 .lc-meet { font-size: 12px; font-weight: 600; color: var(--accent); background: var(--accent-soft); border-radius: 6px; padding: 3px 8px; margin-top: 6px; display: inline-block; }
+.lsum { margin-bottom: 18px; }
+tr.sel td { background: var(--accent-soft); }

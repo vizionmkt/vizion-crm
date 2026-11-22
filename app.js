@@ -965,16 +965,40 @@ async function viewLeads(view) {
     const rows = leads.filter(l => (!f.month || leadMonth(l) === f.month) && (!f.status || l.status === f.status) && (!f.source || l.source === f.source)
       && (!f.network || l.network === f.network) && `${l.name} ${l.company} ${l.handle} ${l.segment} ${l.campaign}`.toLowerCase().includes(q));
     const sp = spend.filter(s => (!f.month || s.month === f.month) && (!f.network || s.network === f.network) && (!f.source || s.source === f.source));
-    const meet = rows.filter(l => l.meeting_date).length, won = rows.filter(l => l.status === 'fechado'), lost = rows.filter(l => l.status === 'perdido');
-    const invest = sp.reduce((a, s) => a + s.amount, 0);
-    const paidLeads = rows.filter(l => l.source === 'trafego' || l.source === 'impulsionamento').length;
-    $('#lstats').innerHTML = `
-      <div class="stat"><div class="k">Leads</div><div class="v">${n0(rows.length)}</div><div class="d muted">${n0(paidLeads)} de tráfego/impulsionamento</div></div>
-      <div class="stat"><div class="k">Reuniões agendadas</div><div class="v">${n0(meet)}</div><div class="d muted">${rows.length ? Math.round(meet / rows.length * 100) : 0}% dos leads</div></div>
-      <div class="stat"><div class="k">Contratos fechados</div><div class="v up">${n0(won.length)}</div><div class="d muted">Conversão ${rows.length ? (won.length / rows.length * 100).toFixed(1).replace('.', ',') : 0}%</div></div>
-      <div class="stat"><div class="k">Perdidos</div><div class="v down">${n0(lost.length)}</div><div class="d muted">${rows.length ? (lost.length / rows.length * 100).toFixed(1).replace('.', ',') : 0}% dos leads</div></div>
-      <div class="stat"><div class="k">Valor fechado</div><div class="v">${brl(won.reduce((a, l) => a + l.deal_value, 0))}</div></div>
-      <div class="stat"><div class="k">Investido</div><div class="v">${brl(invest)}</div><div class="d muted">Custo/lead pago: ${paidLeads ? brl(invest / paidLeads) : '—'}</div></div>`;
+    // ----- Resumo do mês: cada número conta pela data em que aconteceu -----
+    const sm = f.sumMonth || (f.sumMonth = thisMonth());
+    const base = leads.filter(l => (!f.source || l.source === f.source) && (!f.network || l.network === f.network));
+    const baseSp = spend.filter(s => (!f.network || s.network === f.network) && (!f.source || s.source === f.source));
+    const inMonth = (d, m) => (d || '').slice(0, 7) === m;
+    const funnel = m => {
+      const entraram = base.filter(l => leadMonth(l) === m);
+      const reunioes = base.filter(l => inMonth(l.meeting_date, m));
+      const fechados = base.filter(l => l.status === 'fechado' && inMonth(l.closed_date, m));
+      const perdidos = base.filter(l => l.status === 'perdido' && inMonth(l.stage_at, m));
+      const invest = baseSp.filter(s => s.month === m).reduce((a, s) => a + Number(s.amount), 0);
+      const pagos = entraram.filter(l => l.source === 'trafego' || l.source === 'impulsionamento').length;
+      return { entraram, reunioes, fechados, perdidos, invest, pagos, valor: fechados.reduce((a, l) => a + Number(l.deal_value || 0), 0) };
+    };
+    const pc = (a, b) => (b ? `${Math.round(a / b * 100)}%` : '—');
+    const cur = funnel(sm);
+    const meses = Array.from({ length: 6 }, (_, i) => shiftMonth(sm, i - 5));
+    $('#lstats').className = 'card lsum';
+    $('#lstats').innerHTML = `<div class="card-head"><div><h2>Resumo do mês</h2><div class="muted small">Cada número conta pela data em que aconteceu: entrada (1º contato), reunião e fechamento${f.source || f.network ? ' · com os filtros de origem/rede aplicados' : ''}</div></div>
+        <div class="toolbar"><button class="btn secondary sm" id="sm-prev" aria-label="Mês anterior">‹</button><input type="month" id="sm-month" value="${sm}"><button class="btn secondary sm" id="sm-next" aria-label="Próximo mês">›</button></div></div>
+      <div class="stats" style="margin-bottom:14px">
+        <div class="stat"><div class="k">Leads que entraram</div><div class="v">${n0(cur.entraram.length)}</div><div class="d muted">${n0(cur.pagos)} de tráfego/impulsionamento</div></div>
+        <div class="stat"><div class="k">Reuniões agendadas</div><div class="v">${n0(cur.reunioes.length)}</div><div class="d muted">${pc(cur.reunioes.length, cur.entraram.length)} dos leads do mês</div></div>
+        <div class="stat"><div class="k">Contratos fechados</div><div class="v up">${n0(cur.fechados.length)}</div><div class="d muted">${brl(cur.valor)}</div></div>
+        <div class="stat"><div class="k">Perdidos</div><div class="v down">${n0(cur.perdidos.length)}</div><div class="d muted">no mês</div></div>
+        <div class="stat"><div class="k">Investido</div><div class="v">${brl(cur.invest)}</div><div class="d muted">Custo/lead: ${cur.entraram.length && cur.invest ? brl(cur.invest / cur.entraram.length) : '—'}</div></div>
+      </div>
+      <div class="table-wrap"><table><thead><tr><th>Mês</th><th class="r">Entraram</th><th class="r">Reuniões</th><th class="r">Contratos</th><th class="r">Perdidos</th><th class="r">Valor fechado</th><th class="r">Investido</th></tr></thead><tbody>
+        ${meses.reverse().map(m => { const x = funnel(m); return `<tr class="click ${m === sm ? 'sel' : ''}" data-sm="${m}"><td><b>${monthLabel(m)}</b></td><td class="r num">${x.entraram.length}</td><td class="r num">${x.reunioes.length}</td><td class="r num">${x.fechados.length}</td><td class="r num">${x.perdidos.length}</td><td class="r num">${x.valor ? brl(x.valor) : '—'}</td><td class="r num">${x.invest ? brl(x.invest) : '—'}</td></tr>`; }).join('')}
+      </tbody></table></div>`;
+    $('#sm-prev').onclick = () => { f.sumMonth = shiftMonth(sm, -1); draw(); };
+    $('#sm-next').onclick = () => { f.sumMonth = shiftMonth(sm, 1); draw(); };
+    $('#sm-month').onchange = e => { if (e.target.value) { f.sumMonth = e.target.value; draw(); } };
+    $$('[data-sm]', $('#lstats')).forEach(tr => tr.onclick = () => { f.sumMonth = tr.dataset.sm; draw(); });
     $('#lcount').textContent = `${rows.length} de ${leads.length}`;
     $('#lv-title').textContent = { quadro: 'Quadro de etapas', lista: 'Lista de leads', cartoes: 'Leads' }[vmode];
     if (vmode === 'quadro') renderBoard($('#ltable'), rows, leads, clients, reload);
