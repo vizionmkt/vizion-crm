@@ -374,6 +374,17 @@ const Backend = (() => {
   });
   route('POST', '/api/leads', async ({ body }) => { need('leads', 'edit'); const r = await run(sb.from('leads').insert(leadValues(body)).select('id').single()); return { id: r.id }; });
   route('PUT', '/api/leads/:id', async ({ params, body }) => { need('leads', 'edit'); await run(sb.from('leads').update(leadValues(body)).eq('id', Number(params.id))); return { ok: true }; });
+  route('PUT', '/api/leads/:id/stage', async ({ params, body }) => {
+    need('leads', 'edit');
+    if (!['novo', 'contato', 'reuniao', 'proposta', 'perdido'].includes(body.status)) fail('Etapa inválida.');
+    await run(sb.from('leads').update({ status: body.status }).eq('id', Number(params.id)));
+    return { ok: true };
+  });
+  route('PUT', '/api/leads/:id/star', async ({ params, body }) => {
+    need('leads', 'edit');
+    await run(sb.from('leads').update({ starred: !!body.starred }).eq('id', Number(params.id)));
+    return { ok: true };
+  });
   route('DELETE', '/api/leads/:id', async ({ params }) => { need('leads', 'edit'); await run(sb.from('leads').delete().eq('id', Number(params.id))); return { ok: true }; });
   route('POST', '/api/leads/:id/convert', async ({ params }) => {
     const cid = await rpc('convert_lead', { p_id: Number(params.id) });

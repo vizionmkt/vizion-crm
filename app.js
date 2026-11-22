@@ -919,7 +919,17 @@ async function buildReport(month, client, clients) {
 const SOURCES = { trafego: 'Tráfego pago', indicacao: 'Indicação', organico: 'Orgânico', impulsionamento: 'Impulsionamento', outro: 'Outro' };
 const SOURCE_HINT = { trafego: 'Tráfego pago (campanha/anúncio)', indicacao: 'Indicação', organico: 'Orgânico (sem anúncio)', impulsionamento: 'Impulsionamento (post impulsionado)', outro: 'Outro' };
 const SOURCE_BADGE = { trafego: 'accent', impulsionamento: 'warn', organico: 'ok', indicacao: 'neutral', outro: 'neutral' };
-const STATUS = { novo: 'Novo', contato: 'Em contato', reuniao: 'Reunião agendada', proposta: 'Proposta enviada', fechado: 'Contrato fechado', perdido: 'Perdido' };
+const STATUS = { novo: 'Primeiro contato', contato: 'Atendimento', reuniao: 'Reunião agendada', proposta: 'Contrato', fechado: 'Virou cliente', perdido: 'Perdido' };
+// etapas do quadro (os leads "Virou cliente" e "Perdido" saem do quadro)
+const STAGES = [['novo', '#f5b942'], ['contato', '#f59e5b'], ['reuniao', '#f2795f'], ['proposta', '#ef5f6b']];
+const ICON_VIEW = {
+  cartoes: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg>',
+  lista: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>',
+  quadro: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="4" height="18" rx="1.5"/><rect x="10" y="3" width="4" height="12" rx="1.5"/><rect x="17" y="3" width="4" height="7" rx="1.5"/></svg>',
+};
+const leadDays = l => Math.floor((Date.now() - new Date(l.stage_at || l.created_at || Date.now()).getTime()) / 864e5);
+const getPref = (k, d) => { try { return localStorage.getItem(k) || d; } catch { return d; } };
+const setPref = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
 const STATUS_BADGE = { novo: 'neutral', contato: 'warn', reuniao: 'accent', proposta: 'warn', fechado: 'ok', perdido: 'bad' };
 const NETWORKS = ['Instagram', 'TikTok', 'Facebook', 'YouTube', 'LinkedIn', 'Google Meu Negócio'];
 const leadMonth = l => (l.first_contact || l.created_at || '').slice(0, 7);
@@ -929,19 +939,23 @@ async function viewLeads(view) {
   const clients = await api('GET', '/api/clients').catch(() => []);
   const edit = can('leads', 'edit');
   const f = view._lf || (view._lf = { month: '', status: '', source: '', network: '', q: '', owner: '' });
+  let vmode = getPref('vz-leads-view', 'quadro');
   const networks = [...new Set([...NETWORKS, ...leads.map(l => l.network), ...spend.map(s => s.network)].filter(Boolean))];
   view.innerHTML = `<div class="page-head"><div><h1>Leads da Vizion</h1><div class="muted">Seus potenciais clientes: do primeiro contato ao contrato fechado, com a origem de cada um</div></div>
     <div class="actions">${edit ? '<button class="btn secondary" id="add-spend">+ Investimento</button><button class="btn" id="add">+ Novo lead</button>' : ''}</div></div>
-    <div class="card" style="margin-bottom:18px"><div class="toolbar">
-      <input class="search" id="lq" placeholder="Buscar nome, empresa, @…" value="${h(f.q)}">
-      <input type="month" id="lm" value="${f.month}" title="Mês do primeiro contato">
-      <select id="ls"><option value="">Todos os status</option>${Object.entries(STATUS).map(([k, v]) => `<option value="${k}" ${f.status === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
-      <select id="lo"><option value="">Todas as origens</option>${Object.entries(SOURCES).map(([k, v]) => `<option value="${k}" ${f.source === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
-      <select id="ln"><option value="">Todas as redes</option>${networks.map(n => `<option ${f.network === n ? 'selected' : ''}>${h(n)}</option>`).join('')}</select>
-      <button class="btn ghost sm" id="lclear">Limpar filtros</button>
+    <div class="card" style="margin-bottom:18px"><div class="filters">
+      <div class="field f-wide"><label for="lq">Buscar</label><input id="lq" placeholder="Nome, empresa, @, campanha…" value="${h(f.q)}"></div>
+      <div class="field"><label for="lm">Quando chegou</label><input type="month" id="lm" value="${f.month}" title="Mês do primeiro contato"></div>
+      <div class="field"><label for="lo">Por onde veio</label><select id="lo"><option value="">Todas as origens</option>${Object.entries(SOURCES).map(([k, v]) => `<option value="${k}" ${f.source === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+      <div class="field"><label for="ln">Rede social</label><select id="ln"><option value="">Todas as redes</option>${networks.map(n => `<option ${f.network === n ? 'selected' : ''}>${h(n)}</option>`).join('')}</select></div>
+      <div class="field"><label for="ls">Etapa</label><select id="ls"><option value="">Todas as etapas</option>${Object.entries(STATUS).map(([k, v]) => `<option value="${k}" ${f.status === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+      <div class="field f-btn"><button class="btn ghost sm" id="lclear">Limpar filtros</button></div>
     </div></div>
     <div class="stats" id="lstats"></div>
-    <div class="card"><div class="card-head"><h2>Lista de leads</h2><span class="muted small" id="lcount"></span></div><div class="table-wrap" id="ltable"></div></div>
+    <div class="card"><div class="card-head"><div style="display:flex;align-items:center;gap:10px"><h2 id="lv-title">Leads</h2><span class="muted small" id="lcount"></span></div>
+      <div class="view-switch" role="group" aria-label="Modo de visualização">${[['cartoes', 'Cartões'], ['lista', 'Lista'], ['quadro', 'Quadro']].map(([k, l]) =>
+        `<button type="button" data-view="${k}" title="${l}" aria-label="${l}" aria-pressed="${vmode === k}" class="${vmode === k ? 'on' : ''}">${ICON_VIEW[k]}</button>`).join('')}</div></div>
+      <div id="ltable"></div></div>
     <div class="card"><div class="card-head"><div><h2>Desempenho por rede social e origem</h2><div class="muted small">Cruza os leads com o valor investido em tráfego/impulsionamento em cada rede</div></div></div><div class="table-wrap" id="lperf"></div></div>
     <div class="card"><div class="card-head"><h2>Investimentos em tráfego e impulsionamento</h2>${edit ? '<button class="btn secondary sm" id="add-spend2">+ Investimento</button>' : ''}</div><div class="table-wrap" id="lspend"></div></div>`;
 
@@ -962,12 +976,15 @@ async function viewLeads(view) {
       <div class="stat"><div class="k">Valor fechado</div><div class="v">${brl(won.reduce((a, l) => a + l.deal_value, 0))}</div></div>
       <div class="stat"><div class="k">Investido</div><div class="v">${brl(invest)}</div><div class="d muted">Custo/lead pago: ${paidLeads ? brl(invest / paidLeads) : '—'}</div></div>`;
     $('#lcount').textContent = `${rows.length} de ${leads.length}`;
-    $('#ltable').innerHTML = rows.length ? `<table><thead><tr><th>Lead</th><th>Segmento</th><th>Rede social</th><th>Origem</th><th>1º contato</th><th>Reunião</th><th>Fechamento</th><th>Status</th></tr></thead><tbody>
+    $('#lv-title').textContent = { quadro: 'Quadro de etapas', lista: 'Lista de leads', cartoes: 'Leads' }[vmode];
+    if (vmode === 'quadro') renderBoard($('#ltable'), rows, leads, clients, reload);
+    else if (vmode === 'cartoes') renderLeadCards($('#ltable'), rows, leads, clients, reload);
+    else $('#ltable').innerHTML = rows.length ? `<div class="table-wrap"><table><thead><tr><th>Lead</th><th>Segmento</th><th>Rede social</th><th>Origem</th><th>1º contato</th><th>Reunião</th><th>Fechamento</th><th>Status</th></tr></thead><tbody>
       ${rows.map(l => `<tr class="click" data-id="${l.id}"><td><b>${h(l.name)}</b><div class="muted small">${h(l.company)}</div></td>
         <td>${h(l.segment)}</td><td>${h(l.network)}<div class="muted small">${h(l.handle)}</div></td>
         <td><span class="badge ${SOURCE_BADGE[l.source]}">${SOURCES[l.source] || ''}</span>${l.campaign ? `<div class="muted small">${h(l.campaign)}</div>` : ''}</td>
         <td>${fmtDate(l.first_contact) || '—'}</td><td>${fmtDate(l.meeting_date) || '—'}</td><td>${fmtDate(l.closed_date) || '—'}${l.deal_value ? `<div class="muted small">${brl(l.deal_value)}</div>` : ''}</td>
-        <td><span class="badge ${STATUS_BADGE[l.status]}">${STATUS[l.status]}</span>${l.status === 'perdido' && l.lost_reason ? `<div class="muted small">${h(l.lost_reason)}</div>` : ''}${l.converted_client_id ? '<div class="small"><a href="#/clientes/' + l.converted_client_id + '">ver cliente →</a></div>' : ''}</td></tr>`).join('')}</tbody></table>`
+        <td><span class="badge ${STATUS_BADGE[l.status]}">${STATUS[l.status]}</span>${l.status === 'perdido' && l.lost_reason ? `<div class="muted small">${h(l.lost_reason)}</div>` : ''}${l.converted_client_id ? '<div class="small"><a href="#/clientes/' + l.converted_client_id + '">ver cliente →</a></div>' : ''}</td></tr>`).join('')}</tbody></table></div>`
       : `<div class="empty">${leads.length ? 'Nenhum lead com esses filtros.' : 'Nenhum lead cadastrado ainda.'}</div>`;
     $$('#ltable tr[data-id]').forEach(tr => tr.onclick = e => { if (e.target.closest('a')) return; editLead(leads.find(l => l.id == tr.dataset.id), clients, reload); });
 
@@ -990,10 +1007,90 @@ async function viewLeads(view) {
   const bind = (id, k, ev = 'change') => $(id)?.addEventListener(ev, e => { f[k] = e.target.value; draw(); });
   bind('#lq', 'q', 'input'); bind('#lm', 'month'); bind('#ls', 'status'); bind('#lo', 'source'); bind('#ln', 'network');
   $('#lclear').onclick = () => { view._lf = null; reload(); };
+  $$('[data-view]', view).forEach(b => b.onclick = () => {
+    vmode = b.dataset.view; setPref('vz-leads-view', vmode);
+    $$('[data-view]', view).forEach(x => { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', x === b); });
+    draw();
+  });
   $('#add')?.addEventListener('click', () => editLead(null, clients, reload));
   ['#add-spend', '#add-spend2'].forEach(id => $(id)?.addEventListener('click', () => editSpend(null, clients, networks, reload)));
   draw();
 }
+// ----- Quadro de etapas (kanban) e cartões -----
+function leadCardHtml(l, { showStage = false } = {}) {
+  const days = leadDays(l);
+  const ativo = !['fechado', 'perdido'].includes(l.status);
+  const late = ativo && days >= 3;
+  const ini = (l.name || '?').split(/\s+/).map(p => p[0]).slice(0, 2).join('').toUpperCase();
+  return `<div class="lead-card ${late ? 'late' : ''}" data-lead="${l.id}" ${ativo && can('leads', 'edit') ? 'draggable="true"' : ''}>
+    <div class="lc-top"><span class="lc-ini">${h(ini)}</span><b class="lc-name">${h(l.name)}</b>
+      <button type="button" class="lc-star ${l.starred ? 'on' : ''}" data-star="${l.id}" title="${l.starred ? 'Tirar prioridade' : 'Marcar como prioridade'}" aria-label="Prioridade">${l.starred ? '★' : '☆'}</button></div>
+    ${l.company ? `<div class="muted small lc-sub">${h(l.company)}</div>` : ''}
+    <div class="lc-meta"><span title="Primeiro contato">📅 ${fmtDate(l.first_contact) || fmtDate((l.created_at || '').slice(0, 10)) || '—'}</span>
+      <span class="badge ${SOURCE_BADGE[l.source]}">${SOURCES[l.source] || ''}</span></div>
+    ${l.network ? `<div class="muted small">${h(l.network)}${l.handle ? ' · ' + h(l.handle) : ''}</div>` : ''}
+    ${showStage ? `<div style="margin-top:6px"><span class="badge ${STATUS_BADGE[l.status]}">${STATUS[l.status]}</span>${l.status === 'perdido' && l.lost_reason ? ` <span class="muted small">${h(l.lost_reason)}</span>` : ''}</div>` : ''}
+    <div class="lc-foot">${l.deal_value ? `<span class="muted small">${brl(l.deal_value)}</span>` : '<span></span>'}
+      ${late ? `<span class="badge bad">⚠ ${days}d parado</span>` : ativo ? `<span class="muted small">${days === 0 ? 'hoje' : days + 'd na etapa'}</span>` : ''}</div>
+    ${l.status === 'proposta' && can('leads', 'edit') && can('clientes', 'edit') ? `<button type="button" class="btn sm lc-sign" data-sign="${l.id}">✓ Contrato assinado</button>` : ''}
+    ${l.converted_client_id ? `<div class="small" style="margin-top:6px"><a href="#/clientes/${l.converted_client_id}">ver cliente →</a></div>` : ''}
+  </div>`;
+}
+function wireLeadCards(box, leads, clients, reload) {
+  $$('[data-lead]', box).forEach(c => c.onclick = e => {
+    if (e.target.closest('[data-star],[data-sign],a')) return;
+    editLead(leads.find(l => l.id == c.dataset.lead), clients, reload);
+  });
+  $$('[data-star]', box).forEach(b => b.onclick = async e => {
+    e.stopPropagation();
+    if (!can('leads', 'edit')) return;
+    const l = leads.find(x => x.id == b.dataset.star);
+    try { await api('PUT', `/api/leads/${l.id}/star`, { starred: !l.starred }); l.starred = !l.starred; b.classList.toggle('on', l.starred); b.textContent = l.starred ? '★' : '☆'; } catch (err) { fail(err); }
+  });
+  $$('[data-sign]', box).forEach(b => b.onclick = async e => {
+    e.stopPropagation();
+    const l = leads.find(x => x.id == b.dataset.sign);
+    if (!await confirmBox(`Contrato de ${l.name} assinado? O lead sai do quadro e vira cliente — depois é só completar os dados na ficha.`, 'Virar cliente')) return;
+    try { const r = await api('POST', `/api/leads/${l.id}/convert`, {}); toast('🎉 Novo cliente! Complete os dados da ficha.'); location.hash = `#/clientes/${r.client_id}`; } catch (err) { fail(err); }
+  });
+}
+function renderBoard(box, rows, leads, clients, reload) {
+  const active = rows.filter(l => !['fechado', 'perdido'].includes(l.status));
+  const sortLeads = arr => arr.sort((a, b) => (b.starred - a.starred) || String(a.stage_at || '').localeCompare(String(b.stage_at || '')));
+  const hidden = rows.length - active.length;
+  box.innerHTML = `<div class="board">${STAGES.map(([st, color]) => {
+      const items = sortLeads(active.filter(l => l.status === st));
+      return `<div class="board-col" data-col="${st}">
+        <div class="bc-head"><b>${STATUS[st]}</b><div class="bc-sub"><span>${items.length} lead${items.length === 1 ? '' : 's'}</span><span class="num">${brl(items.reduce((s, l) => s + Number(l.deal_value || 0), 0))}</span></div>
+          <div class="bc-bar" style="background:${color}"></div></div>
+        <div class="bc-list">${items.map(l => leadCardHtml(l)).join('') || '<div class="bc-empty">Arraste um lead para cá</div>'}</div></div>`;
+    }).join('')}</div>
+    <p class="muted small" style="margin:10px 0 0">${can('leads', 'edit') ? 'Arraste os cards entre as etapas (no celular, toque no card e mude a etapa). ' : ''}Na etapa <b>Contrato</b>, clique em <b>✓ Contrato assinado</b> para o lead virar cliente.${hidden ? ` ${hidden} lead(s) que viraram cliente ou foram perdidos não aparecem no quadro — veja na Lista.` : ''}</p>`;
+  wireLeadCards(box, leads, clients, reload);
+  if (!can('leads', 'edit')) return;
+  let dragId = null;
+  $$('[draggable=true]', box).forEach(c => {
+    c.addEventListener('dragstart', e => { dragId = c.dataset.lead; c.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', dragId); });
+    c.addEventListener('dragend', () => { c.classList.remove('dragging'); $$('.board-col', box).forEach(x => x.classList.remove('over')); });
+  });
+  $$('.board-col', box).forEach(col => {
+    col.addEventListener('dragover', e => { e.preventDefault(); col.classList.add('over'); });
+    col.addEventListener('dragleave', e => { if (!col.contains(e.relatedTarget)) col.classList.remove('over'); });
+    col.addEventListener('drop', async e => {
+      e.preventDefault(); col.classList.remove('over');
+      const l = leads.find(x => x.id == (dragId || e.dataTransfer.getData('text/plain')));
+      if (!l || l.status === col.dataset.col) return;
+      try { await api('PUT', `/api/leads/${l.id}/stage`, { status: col.dataset.col }); toast(`${l.name} → ${STATUS[col.dataset.col]}`); reload(); } catch (err) { fail(err); }
+    });
+  });
+}
+function renderLeadCards(box, rows, leads, clients, reload) {
+  const sorted = [...rows].sort((a, b) => (b.starred - a.starred) || String(b.first_contact || b.created_at || '').localeCompare(String(a.first_contact || a.created_at || '')));
+  box.innerHTML = sorted.length ? `<div class="lead-grid">${sorted.map(l => leadCardHtml(l, { showStage: true })).join('')}</div>`
+    : `<div class="empty">${leads.length ? 'Nenhum lead com esses filtros.' : 'Nenhum lead cadastrado ainda.'}</div>`;
+  wireLeadCards(box, leads, clients, reload);
+}
+
 // Lista de redes sociais; "Outra" abre um campo para digitar qual
 function networkInput(val) {
   const other = val && !NETWORKS.includes(val);
