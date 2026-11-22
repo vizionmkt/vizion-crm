@@ -209,6 +209,14 @@ const Backend = (() => {
     await run(sb.from('profiles').update({ active: false, perms: {}, client_scope: [] }).eq('id', params.id));
     return { ok: true };
   });
+  route('POST', '/api/users/:id/email', async ({ params, body }) => {
+    adminOnly();
+    if (params.id === me.id) fail('Você não pode trocar o seu próprio e-mail por aqui.');
+    const email = str(body.email, 200).toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) fail('E-mail inválido.');
+    await rpc('admin_change_email', { p_user: params.id, p_email: email });
+    return { ok: true };
+  });
   route('POST', '/api/users/:id/reset', async ({ params }) => {
     adminOnly();
     const u = await run(sb.from('profiles').select('email').eq('id', params.id).single());

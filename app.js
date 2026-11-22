@@ -1111,7 +1111,7 @@ function editUser(u, clients, reload) {
   const scopeAll = u.client_scope === 'all';
   const { el, close } = modal(isNew ? 'Novo usuário' : `Editar ${u.name}`, `<form><div class="grid g2">
       ${field('name', 'Nome *', u.name, 'text', 'required')}
-      ${field('email', 'E-mail de login *', u.email, 'email', `required autocomplete="off" ${isNew ? '' : 'readonly'}`)}
+      ${field('email', 'E-mail de login *', u.email, 'email', `required autocomplete="off" ${self ? 'readonly title="Para trocar o seu próprio e-mail, fale com o suporte"' : ''}`)}
       ${isNew ? field('password', 'Senha inicial * (mín. 8)', '', 'text', 'required minlength="8" autocomplete="new-password"')
         : `<div class="field"><label>Senha</label><button type="button" class="btn secondary" id="u-reset" style="width:100%;justify-content:center">Enviar e-mail para criar nova senha</button></div>`}
       <div class="field"><label>Tipo de acesso</label><select name="role" ${self ? 'disabled' : ''}>
@@ -1148,7 +1148,12 @@ function editUser(u, clients, reload) {
     if (isNew) {
       const r = await api('POST', '/api/users', body);
       close(); toast(r.needsConfirm ? 'Usuário criado! Ele precisa confirmar pelo e-mail antes de entrar.' : 'Usuário criado! Já pode entrar com o e-mail e a senha.'); reload();
-    } else { await api('PUT', `/api/users/${u.id}`, body); close(); toast('Usuário salvo!'); reload(); }
+    } else {
+      const novoEmail = String(d.email || '').trim().toLowerCase();
+      if (!self && novoEmail && novoEmail !== u.email) await api('POST', `/api/users/${u.id}/email`, { email: novoEmail });
+      await api('PUT', `/api/users/${u.id}`, body); close();
+      toast(!self && novoEmail !== u.email ? `Login alterado para ${novoEmail}` : 'Usuário salvo!'); reload();
+    }
   });
 }
 
