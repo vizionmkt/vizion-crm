@@ -171,7 +171,7 @@ function navItems() {
 }
 function startApp() {
   $('#app').innerHTML = `
-    <div class="topbar"><button id="menu-btn" aria-label="Menu">${I.menu}</button>${BRAND}</div>
+    <div class="topbar"><button id="menu-btn" aria-label="Menu">${I.menu}</button>${BRAND}<button class="top-logout" id="top-logout">Sair</button></div>
     <div class="layout">
       <aside class="sidebar" id="sidebar">${BRAND}
         <nav class="nav">${navItems().map(([href, label, icon]) => `<a href="${href}">${icon}<span>${label}</span></a>`).join('')}</nav>
@@ -183,6 +183,7 @@ function startApp() {
       <main class="main" id="view"></main>
     </div>`;
   $('#logout').onclick = logout;
+  $('#top-logout').onclick = logout;
   $('#my-pass').onclick = changeMyPassword;
   $('#menu-btn').onclick = () => $('#sidebar').classList.toggle('open');
   $('#side-backdrop').onclick = () => $('#sidebar').classList.remove('open');
