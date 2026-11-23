@@ -206,8 +206,8 @@ const Backend = (() => {
   });
   route('DELETE', '/api/users/:id', async ({ params }) => {
     adminOnly();
-    if (params.id === me.id) fail('Você não pode remover o seu próprio acesso.');
-    await run(sb.from('profiles').update({ active: false, perms: {}, client_scope: [] }).eq('id', params.id));
+    if (params.id === me.id) fail('Você não pode excluir o seu próprio acesso.');
+    await rpc('admin_delete_user', { p_user: params.id }); // apaga o login e o perfil de vez
     return { ok: true };
   });
   route('POST', '/api/users/:id/email', async ({ params, body }) => {

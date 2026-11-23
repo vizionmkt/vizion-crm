@@ -1256,14 +1256,14 @@ function editUser(u, clients, reload) {
       <div class="chips" id="chips" style="margin-top:8px;${scopeAll ? 'display:none' : ''}">${clients.length ? clients.map(c => `<label><input type="checkbox" value="${c.id}" ${!scopeAll && u.client_scope.includes(c.id) ? 'checked' : ''}> ${h(c.name)}</label>`).join('') : '<span class="muted small">Nenhum cliente cadastrado.</span>'}</div>
     </div>
     ${!isNew && !self ? `<div class="field" style="margin-top:16px"><label class="radio"><input type="checkbox" name="active" ${u.active ? 'checked' : ''}> Acesso ativo (desmarque para bloquear o login)</label></div>` : ''}
-    <div class="modal-foot">${!isNew && !self ? '<button type="button" class="btn ghost" id="u-del" style="margin-right:auto;color:var(--bad)">Remover acesso</button>' : ''}
+    <div class="modal-foot">${!isNew && !self ? '<button type="button" class="btn ghost" id="u-del" style="margin-right:auto;color:var(--bad)">🗑 Excluir usuário</button>' : ''}
       <button type="button" class="btn secondary" data-close>Cancelar</button><button class="btn" type="submit">Salvar</button></div></form>`, { wide: true });
   $$('[data-close]', el).forEach(b => b.onclick = close);
   const roleSel = $('[name=role]', el);
   const syncRole = () => { $('#perm-box', el).style.display = roleSel.value === 'admin' ? 'none' : ''; };
   roleSel.onchange = syncRole; syncRole();
   $$('[name=scope]', el).forEach(r => r.onchange = () => { $('#chips', el).style.display = $('[name=scope]:checked', el).value === 'all' ? 'none' : ''; });
-  $('#u-del', el)?.addEventListener('click', async () => { if (await confirmBox(`Remover o acesso de ${u.name}? A pessoa não vai mais conseguir entrar.`, 'Remover acesso')) { await api('DELETE', `/api/users/${u.id}`).catch(fail); close(); reload(); } });
+  $('#u-del', el)?.addEventListener('click', async () => { if (await confirmBox(`Excluir ${u.name} (${u.email}) de vez? O login e as permissões serão apagados e não dá para desfazer. Se quiser só bloquear por um tempo, desmarque "Acesso ativo" e salve.`, 'Excluir usuário')) { await api('DELETE', `/api/users/${u.id}`).catch(fail); close(); reload(); } });
   $('#u-reset', el)?.addEventListener('click', async () => { try { await api('POST', `/api/users/${u.id}/reset`); toast(`E-mail enviado para ${u.email}`); } catch (e) { fail(e); } });
   onSubmit($('form', el), async d => {
     const perms = {}; for (const k of Object.keys(MOD_LABELS)) perms[k] = d['perm_' + k] || 'none';
