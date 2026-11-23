@@ -982,19 +982,22 @@ async function viewLeads(view) {
     const pc = (a, b) => (b ? `${Math.round(a / b * 100)}%` : '—');
     const cur = funnel(sm);
     const meses = Array.from({ length: 6 }, (_, i) => shiftMonth(sm, i - 5));
+    const smode = getPref('vz-leads-sum', 'caixas'); // caixas = só os cards do mês; tabela = últimos 6 meses
     $('#lstats').className = 'card lsum';
     $('#lstats').innerHTML = `<div class="card-head"><div><h2>Resumo do mês</h2><div class="muted small">Cada número conta pela data em que aconteceu: entrada (1º contato), reunião e fechamento${f.source || f.network ? ' · com os filtros de origem/rede aplicados' : ''}</div></div>
-        <div class="toolbar"><button class="btn secondary sm" id="sm-prev" aria-label="Mês anterior">‹</button><input type="month" id="sm-month" value="${sm}"><button class="btn secondary sm" id="sm-next" aria-label="Próximo mês">›</button></div></div>
-      <div class="stats" style="margin-bottom:14px">
+        <div class="toolbar"><button class="btn secondary sm" id="sm-prev" aria-label="Mês anterior">‹</button><input type="month" id="sm-month" value="${sm}"><button class="btn secondary sm" id="sm-next" aria-label="Próximo mês">›</button>
+          <div class="view-switch" role="group" aria-label="Como ver o resumo">${[['caixas', 'Caixas do mês', ICON_VIEW.cartoes], ['tabela', 'Tabela dos últimos 6 meses', ICON_VIEW.lista]].map(([k, l, ic]) =>
+            `<button type="button" data-sumview="${k}" title="${l}" aria-label="${l}" aria-pressed="${smode === k}" class="${smode === k ? 'on' : ''}">${ic}</button>`).join('')}</div></div></div>
+      ${smode === 'caixas' ? `<div class="stats" style="margin-bottom:0">
         <div class="stat"><div class="k">Leads que entraram</div><div class="v">${n0(cur.entraram.length)}</div><div class="d muted">${n0(cur.pagos)} de tráfego/impulsionamento</div></div>
         <div class="stat"><div class="k">Reuniões agendadas</div><div class="v">${n0(cur.reunioes.length)}</div><div class="d muted">${pc(cur.reunioes.length, cur.entraram.length)} dos leads do mês</div></div>
         <div class="stat"><div class="k">Contratos fechados</div><div class="v up">${n0(cur.fechados.length)}</div><div class="d muted">${brl(cur.valor)}</div></div>
         <div class="stat"><div class="k">Perdidos</div><div class="v down">${n0(cur.perdidos.length)}</div><div class="d muted">no mês</div></div>
         <div class="stat"><div class="k">Investido</div><div class="v">${brl(cur.invest)}</div><div class="d muted">Custo/lead: ${cur.entraram.length && cur.invest ? brl(cur.invest / cur.entraram.length) : '—'}</div></div>
-      </div>
-      <div class="table-wrap"><table><thead><tr><th>Mês</th><th class="r">Entraram</th><th class="r">Reuniões</th><th class="r">Contratos</th><th class="r">Perdidos</th><th class="r">Valor fechado</th><th class="r">Investido</th></tr></thead><tbody>
+      </div>` : `<div class="table-wrap"><table><thead><tr><th>Mês</th><th class="r">Entraram</th><th class="r">Reuniões</th><th class="r">Contratos</th><th class="r">Perdidos</th><th class="r">Valor fechado</th><th class="r">Investido</th></tr></thead><tbody>
         ${meses.reverse().map(m => { const x = funnel(m); return `<tr class="click ${m === sm ? 'sel' : ''}" data-sm="${m}"><td><b>${monthLabel(m)}</b></td><td class="r num">${x.entraram.length}</td><td class="r num">${x.reunioes.length}</td><td class="r num">${x.fechados.length}</td><td class="r num">${x.perdidos.length}</td><td class="r num">${x.valor ? brl(x.valor) : '—'}</td><td class="r num">${x.invest ? brl(x.invest) : '—'}</td></tr>`; }).join('')}
-      </tbody></table></div>`;
+      </tbody></table></div>`}`;
+    $$('[data-sumview]', $('#lstats')).forEach(b => b.onclick = () => { setPref('vz-leads-sum', b.dataset.sumview); draw(); });
     $('#sm-prev').onclick = () => { f.sumMonth = shiftMonth(sm, -1); draw(); };
     $('#sm-next').onclick = () => { f.sumMonth = shiftMonth(sm, 1); draw(); };
     $('#sm-month').onchange = e => { if (e.target.value) { f.sumMonth = e.target.value; draw(); } };
