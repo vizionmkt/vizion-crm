@@ -273,12 +273,38 @@ const Backend = (() => {
     need('metricas', 'edit', 'Sem permissão para editar métricas.');
     if (!isMonth(params.month)) fail('Mês inválido.');
     await run(sb.from('metrics').upsert({
-      client_id: Number(params.id), month: params.month, views: int(body.views), followers: int(body.followers), profile_visits: int(body.profile_visits),
+      client_id: Number(params.id), month: params.month, views: int(body.views), reach: int(body.reach), followers: int(body.followers), profile_visits: int(body.profile_visits),
       link_clicks: int(body.link_clicks), interactions: int(body.interactions), leads: int(body.leads), ad_results: int(body.ad_results),
       result_type: str(body.result_type, 60) || 'Leads', ad_spend: num(body.ad_spend), notes: str(body.notes),
     }, { onConflict: 'client_id,month' }));
     return { ok: true };
   });
+  // integração com a Meta (função meta-sync no Supabase)
+  async function invokeMeta(payload) {
+    const { data, error } = await sb.functions.invoke('meta-sync', { body: payload });
+    if (error) {
+      let msg = error.message || 'Erro na integração com a Meta.';
+      try { const j = await error.context.json(); msg = j.error || msg; } catch {}
+      if (/Failed to send|not found|404/i.test(msg)) msg = 'A função de integração (meta-sync) ainda não foi instalada no Supabase.';
+      fail(msg);
+    }
+    if (data?.error) fail(data.error);
+    return data;
+  }
+  route('GET', '/api/meta/accounts', async () => { adminOnly(); return invokeMeta({ action: 'accounts' }); });
+  route('POST', '/api/meta/sync', async ({ body }) => {
+    adminOnly();
+    return invokeMeta({ action: 'sync', ...(isMonth(body.month) ? { month: body.month } : {}), ...(body.client_id ? { client_id: Number(body.client_id) } : {}) });
+  });
+  route('PUT', '/api/clients/:id/meta', async ({ params, body }) => {
+    adminOnly();
+    await run(sb.from('clients').update({
+      ig_account_id: str(body.ig_account_id, 60), ig_username: str(body.ig_username, 100),
+      ad_account_id: str(body.ad_account_id, 60).replace(/^act_/, ''), ad_account_name: str(body.ad_account_name, 200),
+    }).eq('id', Number(params.id)));
+    return { ok: true };
+  });
+  route('GET', '/api/meta/log', async () => { adminOnly(); return run(sb.from('sync_log').select('*').order('run_at', { ascending: false }).limit(40)); });
   route('DELETE', '/api/metrics/:id', async ({ params }) => { need('metricas', 'edit'); await run(sb.from('metrics').delete().eq('id', Number(params.id))); return { ok: true }; });
 
   // resultados (soma dos meses que se sobrepõem ao período)
@@ -292,7 +318,7 @@ const Backend = (() => {
     if (query.client) qy = qy.eq('client_id', Number(query.client));
     const rows = (await run(qy)).map(r => ({ ...r, client_name: r.clients?.name || '' }));
     // "followers" = novos seguidores ganhos no mês (é como a equipe lança), então soma como os outros
-    const K = ['views', 'followers', 'interactions', 'ad_results', 'ad_spend', 'leads', 'profile_visits', 'link_clicks'];
+    const K = ['views', 'reach', 'followers', 'interactions', 'ad_results', 'ad_spend', 'leads', 'profile_visits', 'link_clicks'];
     const by = {};
     for (const r of rows) {
       const c = by[r.client_id] ||= { client_id: r.client_id, client_name: r.client_name, types: new Set(), ...Object.fromEntries(K.map(k => [k, 0])) };

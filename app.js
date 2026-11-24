@@ -523,7 +523,7 @@ function tabData(box, c) {
 }
 
 const METRIC_FIELDS = [
-  ['views', 'Visualizações'], ['followers', 'Novos seguidores'], ['profile_visits', 'Visitas ao perfil'],
+  ['views', 'Visualizações'], ['reach', 'Alcance'], ['followers', 'Novos seguidores'], ['profile_visits', 'Visitas ao perfil'],
   ['link_clicks', 'Toques no link da bio'], ['interactions', 'Interações'], ['leads', 'Leads'],
   ['ad_results', 'Resultados de anúncios'], ['ad_spend', 'Investido em tráfego'],
 ];
@@ -753,10 +753,13 @@ async function viewResults(view) {
   const q = new URLSearchParams({ from: st.from, to: st.to, ...(st.client ? { client: st.client } : {}) });
   const r = await api('GET', `/api/results?${q}`);
   const t = r.totals;
+  const syncs = r.rows.map(x => x.synced_at).filter(Boolean).sort();
+  const lastSync = syncs.length ? new Date(syncs[syncs.length - 1]).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
   const resultTypes = [...new Set(r.clients.flatMap(c => c.result_types))];
   const resultLabel = resultTypes.length === 1 ? resultTypes[0].toLowerCase() : 'resultado';
-  view.innerHTML = `<div class="page-head"><div><h1>Desempenho e investimento</h1><div class="muted">Informe resultados manualmente e filtre por período.</div></div>
+  view.innerHTML = `<div class="page-head"><div><h1>Desempenho e investimento</h1><div class="muted">Números da Meta atualizados automaticamente · leads lançados por você.${lastSync ? ` <span class="small">Última atualização automática: ${lastSync}</span>` : ''}</div></div>
     <div class="actions"><select id="r-client" style="width:auto"><option value="">Todas as contas</option>${clients.map(c => `<option value="${c.id}" ${st.client == c.id ? 'selected' : ''}>${h(c.name)}</option>`).join('')}</select>
+    ${isAdmin() ? '<button class="btn secondary" id="r-sync" title="Busca agora os números do Instagram e dos anúncios">↻ Atualizar da Meta</button>' : ''}
     ${can('metricas', 'edit') ? '<button class="btn" id="r-add">+ Lançar resultados</button>' : ''}
     <button class="btn secondary" id="r-pdf">⇩ Gerar relatório PDF do mês</button></div></div>
     <div class="card"><h2>Período de análise</h2><div class="muted" style="margin-bottom:12px">Filtre os registros pela data ou mês informado.</div>
@@ -770,7 +773,7 @@ async function viewResults(view) {
       : st.preset === 'tudo' ? 'Mostrando a soma de <b>todos os meses</b> lançados.'
       : `Período: ${fmtDate(r.from)} a ${fmtDate(r.to)} · soma dos meses ${monthLabel(r.months_range[0])}${r.months_range[0] !== r.months_range[1] ? ' a ' + monthLabel(r.months_range[1]) : ''}.`}</p>
     <div class="stats">
-      <div class="stat"><div class="stat-ico">◉</div><div class="k">Visualizações</div><div class="v">${n0(t.views)}</div><div class="d muted">Dados lançados manualmente</div></div>
+      <div class="stat"><div class="stat-ico">◉</div><div class="k">Visualizações</div><div class="v">${n0(t.views)}</div><div class="d muted">Alcance: ${n0(t.reach)} contas</div></div>
       <div class="stat"><div class="stat-ico">↗</div><div class="k">Novos seguidores</div><div class="v ${t.new_followers < 0 ? 'down' : ''}">${t.new_followers > 0 ? '+' : ''}${n0(t.new_followers)}</div><div class="d muted">Ganhos no período</div></div>
       <div class="stat"><div class="stat-ico">♡</div><div class="k">Interações</div><div class="v">${n0(t.interactions)}</div><div class="d muted">Interações registradas</div></div>
       <div class="stat"><div class="stat-ico">✉</div><div class="k">Leads recebidos</div><div class="v">${n0(t.leads)}</div><div class="d muted">Custo por lead: ${costPer(t.ad_spend, t.leads)}</div></div>
@@ -806,6 +809,15 @@ async function viewResults(view) {
   $('#r-next')?.addEventListener('click', () => { st.month = shiftMonth(st.month, 1); reload(); });
   $('#r-apply')?.addEventListener('click', () => { st.from = $('#r-from').value; st.to = $('#r-to').value; reload(); });
   $('#r-client').onchange = e => { st.client = e.target.value; reload(); };
+  $('#r-sync')?.addEventListener('click', async e => {
+    const b = e.currentTarget; b.disabled = true; b.textContent = 'Atualizando…';
+    try {
+      const res = await api('POST', '/api/meta/sync', st.preset === 'mes' ? { month: st.month } : {});
+      const ok = (res.synced || []).filter(x => x.ok).length, total = (res.synced || []).length;
+      toast(total ? `Meta: ${ok} de ${total} atualizado(s)` : (res.message || 'Nenhum cliente vinculado à Meta. Vincule em Configurações.'), ok < total);
+      reload();
+    } catch (err) { fail(err); b.disabled = false; b.textContent = '↻ Atualizar da Meta'; }
+  });
   $('#r-pdf').onclick = () => pickReport(clients, st.client, st.preset === 'mes' ? st.month : thisMonth());
   if (r.monthly.length) { const draw = () => { $('#r-chart').innerHTML = barChart(r.monthly, $('#r-k').value); }; $('#r-k').onchange = draw; draw(); }
 }
@@ -822,8 +834,9 @@ function launchResults(clients, preClient, existing, reload) {
     <p class="muted small" id="lr-status" style="margin:4px 0 0"></p>
     <h3 style="margin:16px 0 10px">Leads</h3>
     <div class="grid g2">${numField('leads')}<div></div></div>
+    <div class="hint" style="margin:14px 0 0">🔄 Para clientes vinculados à Meta, <b>visualizações, alcance, novos seguidores, interações e anúncios</b> são preenchidos automaticamente todo dia 3, com o mês anterior completo. Você preenche os <b>leads</b> (e, se quiser, visitas ao perfil e toques no link, que o Instagram não fornece mais).</div>
     <h3 style="margin:16px 0 10px">Orgânico (perfil)</h3>
-    <div class="grid g2">${['views', 'followers', 'interactions', 'profile_visits', 'link_clicks'].map(numField).join('')}</div>
+    <div class="grid g2">${['views', 'reach', 'followers', 'interactions', 'profile_visits', 'link_clicks'].map(numField).join('')}</div>
     <h3 style="margin:16px 0 10px">Anúncios (tráfego / impulsionamento)</h3>
     <div class="grid g2">
       ${numField('ad_spend')}
@@ -891,6 +904,7 @@ async function buildReport(month, client, clients) {
     h2{font-size:15px;margin:22px 0 8px} table{width:100%;border-collapse:collapse} th,td{padding:7px 8px;border-bottom:1px solid #e3e5ee;text-align:left}
     th{font-size:11px;color:#6b7086;text-transform:uppercase} td.r,th.r{text-align:right}
     .foot{margin-top:30px;color:#6b7086;font-size:11px} .noprint{margin-bottom:20px}
+    .analysis p{margin:0 0 9px} .analysis ul{margin:4px 0 10px;padding-left:18px} .analysis li{margin-bottom:4px} .tag{font-weight:700}
     .noprint button{font:inherit;font-weight:600;background:#6d4aff;color:#fff;border:0;border-radius:8px;padding:9px 16px;cursor:pointer}
     @media print{body{padding:0}.noprint{display:none} @page{margin:16mm}}
   </style></head><body>
@@ -898,11 +912,14 @@ async function buildReport(month, client, clients) {
   <div class="top"><div><div class="eyebrow">Vizion Comunicação · Relatório mensal</div><h1>${h(c ? c.name : 'Todas as contas')}</h1></div><div style="text-align:right"><b>${monthLabel(month)}</b><div style="color:#6b7086">${fmtDate(cur.from)} a ${fmtDate(cur.to)}</div></div></div>
   ${cur.rows.length ? `
   <div class="grid">
-    ${card('Visualizações', n0(t.views), 'views')}${card('Novos seguidores', (t.new_followers > 0 ? '+' : '') + n0(t.new_followers))}
+    ${card('Visualizações', n0(t.views), 'views')}${card('Alcance (contas)', n0(t.reach), 'reach')}${card('Novos seguidores', n0(t.new_followers), 'new_followers')}
     ${card('Interações', n0(t.interactions), 'interactions')}${card('Visitas ao perfil', n0(t.profile_visits), 'profile_visits')}
     ${card('Toques no link da bio', n0(t.link_clicks), 'link_clicks')}${card('Leads', n0(t.leads), 'leads')}
     ${card('Resultados de anúncios', n0(t.ad_results), 'ad_results')}${card('Valor investido', brl(t.ad_spend), 'ad_spend')}
+    ${card('Custo por lead', costPer(t.ad_spend, t.leads))}${card('Engajamento', t.reach ? (t.interactions / t.reach * 100).toFixed(2).replace('.', ',') + '%' : '—')}
   </div>
+  <h2>Análise do mês</h2>
+  <div class="analysis">${analyzeMonth(t, p, month, c ? c.name : 'as contas', cur.rows.length > 0, prev.rows.length > 0)}</div>
   <h2>Investimento e custo</h2>
   <table><tbody><tr><td>Valor investido em tráfego/impulsionamento</td><td class="r"><b>${brl(t.ad_spend)}</b></td></tr>
     <tr><td>Custo por resultado</td><td class="r"><b>${costPer(t.ad_spend, t.ad_results)}</b></td></tr>
@@ -913,6 +930,126 @@ async function buildReport(month, client, clients) {
   : `<p>Nenhum relatório foi lançado para ${monthLabel(month)}.</p>`}
   <div class="foot">Gerado pelo Vizion CRM em ${fmtDate(todayStr())}.</div>
   <script>setTimeout(()=>print(),400)<\/script></body></html>`;
+}
+
+// ---------- Análise escrita do relatório mensal ----------
+function analyzeMonth(t, p, month, nome, temDados, temAnterior) {
+  if (!temDados) return '';
+  const prevName = monthLabel(shiftMonth(month, -1));
+  const fmtPct = v => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(1).replace('.', ',')}%`;
+  const comp = (k, label, money = false) => {
+    const a = Number(t[k] || 0), b = Number(p[k] || 0), val = money ? brl(a) : n0(a);
+    if (!temAnterior || !b) return `<li><span class="tag">${label}:</span> ${val}</li>`;
+    const v = (a - b) / b * 100;
+    return `<li><span class="tag">${label}:</span> ${val} (${fmtPct(v)} em relação a ${prevName}, que teve ${money ? brl(b) : n0(b)})</li>`;
+  };
+  const out = [];
+  const partes = [];
+  if (t.views) partes.push(`<b>${n0(t.views)}</b> visualizações`);
+  if (t.reach) partes.push(`alcançou <b>${n0(t.reach)}</b> contas`);
+  if (t.interactions) partes.push(`<b>${n0(t.interactions)}</b> interações`);
+  if (t.new_followers) partes.push(`<b>${n0(t.new_followers)}</b> novos seguidores`);
+  if (partes.length) out.push(`<p>Em <b>${monthLabel(month)}</b>, o perfil de ${h(nome)} teve ${partes.join(', ').replace(/, ([^,]*)$/, ' e $1')}.</p>`);
+  out.push('<ul>' + [
+    comp('views', 'Visualizações'), comp('reach', 'Alcance'), comp('new_followers', 'Novos seguidores'),
+    comp('interactions', 'Interações'), comp('leads', 'Leads recebidos'), comp('ad_spend', 'Valor investido', true),
+  ].join('') + '</ul>');
+  if (t.reach) {
+    const eng = t.interactions / t.reach * 100;
+    let txt = `A taxa de engajamento (interações ÷ alcance) foi de <b>${eng.toFixed(2).replace('.', ',')}%</b>`;
+    if (temAnterior && p.reach) { const e0 = p.interactions / p.reach * 100; txt += e0 ? `, ${eng >= e0 ? 'acima' : 'abaixo'} dos ${e0.toFixed(2).replace('.', ',')}% de ${prevName}` : ''; }
+    out.push(`<p>${txt}.</p>`);
+  }
+  if (t.ad_spend) {
+    let txt = `Foram investidos <b>${brl(t.ad_spend)}</b> em anúncios`;
+    if (t.ad_results) {
+      const cpr = t.ad_spend / t.ad_results;
+      txt += `, gerando <b>${n0(t.ad_results)}</b> resultados — custo de <b>${brl(cpr)}</b> por resultado`;
+      if (temAnterior && p.ad_results && p.ad_spend) {
+        const c0 = p.ad_spend / p.ad_results;
+        txt += c0 ? ` (${cpr <= c0 ? 'mais barato' : 'mais caro'} que os ${brl(c0)} de ${prevName})` : '';
+      }
+    }
+    out.push(`<p>${txt}.</p>`);
+  }
+  if (t.leads) {
+    let txt = `O cliente recebeu <b>${n0(t.leads)}</b> leads no mês`;
+    if (t.ad_spend) txt += `, com custo médio de <b>${brl(t.ad_spend / t.leads)}</b> por lead`;
+    out.push(`<p>${txt}.</p>`);
+  }
+  if (temAnterior) {
+    const ks = [['views', 'visualizações'], ['reach', 'alcance'], ['new_followers', 'novos seguidores'], ['interactions', 'interações'], ['leads', 'leads']]
+      .filter(([k]) => p[k]).map(([k, l]) => [l, (t[k] - p[k]) / p[k] * 100]);
+    if (ks.length) {
+      ks.sort((a, b) => b[1] - a[1]);
+      const best = ks[0], worst = ks[ks.length - 1];
+      if (best[1] > 0) out.push(`<p>✅ <b>Destaque:</b> o maior crescimento foi em ${best[0]} (${fmtPct(best[1])}).</p>`);
+      if (worst[1] < 0) out.push(`<p>⚠️ <b>Ponto de atenção:</b> queda em ${worst[0]} (${fmtPct(worst[1])}) — vale revisar o que mudou nos conteúdos ou campanhas.</p>`);
+    }
+  } else out.push(`<p>Este é o primeiro mês com dados registrados — a partir do próximo relatório, os números serão comparados mês a mês.</p>`);
+  return out.join('');
+}
+
+// ---------- Integração com a Meta (Configurações) ----------
+async function renderMetaCard(box) {
+  const clients = await api('GET', '/api/clients');
+  let accounts = null;
+  const draw = () => {
+    const ig = accounts?.instagram || [], ads = accounts?.ads || [];
+    box.innerHTML = `<div class="card-head"><div><h2>Integração com a Meta (Instagram + Anúncios)</h2>
+        <div class="muted small">Todo dia 3, às 10h, o CRM busca o mês anterior completo: visualizações, alcance, novos seguidores, interações e anúncios de cada cliente vinculado. Os leads continuam manuais.</div></div>
+        <button class="btn secondary" id="meta-load">${accounts ? '↻ Buscar de novo' : 'Buscar contas da Meta'}</button></div>
+      ${accounts?.errors?.length ? `<div class="error">${accounts.errors.map(h).join('<br>')}</div>` : ''}
+      <div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Instagram</th><th>Conta de anúncios</th></tr></thead><tbody>
+      ${clients.map(c => `<tr data-cid="${c.id}"><td><b>${h(c.name)}</b>${c.active ? '' : ' <span class="badge neutral">finalizado</span>'}</td>
+        <td>${accounts ? `<select data-ig><option value="">— não vincular —</option>${ig.map(a => `<option value="${h(a.id)}" data-u="${h(a.username)}" ${a.id === c.ig_account_id ? 'selected' : ''}>@${h(a.username || a.name)}</option>`).join('')}</select>`
+          : (c.ig_username ? '@' + h(c.ig_username) : '<span class="muted">não vinculado</span>')}</td>
+        <td>${accounts ? `<select data-ad><option value="">— não vincular —</option>${ads.map(a => `<option value="${h(a.id)}" data-n="${h(a.name)}" ${a.id === c.ad_account_id ? 'selected' : ''}>${h(a.name)}${a.active ? '' : ' (inativa)'}</option>`).join('')}</select>`
+          : (c.ad_account_name ? h(c.ad_account_name) : '<span class="muted">não vinculado</span>')}</td></tr>`).join('')}
+      </tbody></table></div>
+      ${accounts ? '<div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="btn" id="meta-save">Salvar vínculos</button></div>' : ''}
+      <div class="toolbar" style="margin-top:16px;border-top:1px solid var(--border);padding-top:14px">
+        <b>Sincronizar agora:</b><input type="month" id="meta-month" value="${thisMonth()}"><button class="btn secondary" id="meta-sync">↻ Atualizar este mês</button>
+        <span class="muted small">(a rotina automática roda todo dia 3 com o mês anterior completo; use este botão para atualizar antes ou corrigir um mês)</span></div>
+      <h3 style="margin:16px 0 8px">Últimas sincronizações</h3><div id="meta-log" class="muted small">Carregando…</div>`;
+    $('#meta-load', box).onclick = async e => {
+      e.currentTarget.disabled = true; e.currentTarget.textContent = 'Buscando…';
+      try { accounts = await api('GET', '/api/meta/accounts'); draw(); toast(`Encontrados: ${accounts.instagram.length} Instagram e ${accounts.ads.length} contas de anúncio`); }
+      catch (err) { fail(err); draw(); }
+    };
+    $('#meta-save', box)?.addEventListener('click', async () => {
+      try {
+        for (const tr of $$('tr[data-cid]', box)) {
+          const ig = $('[data-ig]', tr), ad = $('[data-ad]', tr);
+          await api('PUT', `/api/clients/${tr.dataset.cid}/meta`, {
+            ig_account_id: ig.value, ig_username: ig.selectedOptions[0]?.dataset.u || '',
+            ad_account_id: ad.value, ad_account_name: ad.selectedOptions[0]?.dataset.n || '',
+          });
+        }
+        toast('Vínculos salvos!'); renderMetaCard(box);
+      } catch (err) { fail(err); }
+    });
+    $('#meta-sync', box).onclick = async e => {
+      const b = e.currentTarget; b.disabled = true; b.textContent = 'Atualizando…';
+      try {
+        const res = await api('POST', '/api/meta/sync', { month: $('#meta-month', box).value });
+        const ok = (res.synced || []).filter(x => x.ok).length, total = (res.synced || []).length;
+        toast(total ? `${ok} de ${total} cliente(s) atualizado(s)` : (res.message || 'Nada para atualizar'), ok < total);
+      } catch (err) { fail(err); }
+      b.disabled = false; b.textContent = '↻ Atualizar este mês'; loadLog();
+    };
+    const loadLog = async () => {
+      try {
+        const log = await api('GET', '/api/meta/log');
+        $('#meta-log', box).innerHTML = log.length ? `<div class="table-wrap"><table><thead><tr><th>Quando</th><th>Mês</th><th>Cliente</th><th>Resultado</th></tr></thead><tbody>
+          ${log.map(l => `<tr><td class="small">${new Date(l.run_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td><td>${monthLabel(l.month)}</td><td>${h(l.client_name)}</td>
+            <td><span class="badge ${l.ok ? 'ok' : 'bad'}">${l.ok ? 'ok' : 'erro'}</span> <span class="small">${h(l.message)}</span></td></tr>`).join('')}</tbody></table></div>`
+          : 'Nenhuma sincronização ainda.';
+      } catch { $('#meta-log', box).textContent = 'Registro indisponível.'; }
+    };
+    loadLog();
+  };
+  draw();
 }
 
 // ---------- Leads ----------
@@ -1298,7 +1435,9 @@ async function viewSettings(view) {
       ${field('msg_overdue', 'Mensagem de cobrança (pagamento atrasado)', s.msg_overdue, 'textarea')}
     </div>
     <p class="muted small">Variáveis: <code>{nome}</code> primeiro nome · <code>{nome_completo}</code> · <code>{mes}</code> · <code>{valor}</code> · <code>{vencimento}</code> · <code>{pix}</code> · <code>{empresa}</code></p>
-    <div style="display:flex;justify-content:flex-end"><button class="btn" type="submit">Salvar configurações</button></div></form>`;
+    <div style="display:flex;justify-content:flex-end"><button class="btn" type="submit">Salvar configurações</button></div></form>
+    <div class="card" id="meta-card" style="margin-top:18px"><div class="muted">Carregando integração com a Meta…</div></div>`;
+  renderMetaCard($('#meta-card')).catch(e => { $('#meta-card').innerHTML = `<div class="error">${h(e.message)}</div>`; });
   $$('#sf textarea').forEach(t => t.style.minHeight = '170px');
   onSubmit($('#sf'), async d => { state.settings = await api('PUT', '/api/settings', d); toast('Configurações salvas!'); });
 }
